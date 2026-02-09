@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 import 'app/app.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
-    await Firebase.initializeApp();
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    debugPrint('Firebase initialized successfully!');
   } catch (e) {
-    print('Firebase initialization error: $e');
-    print(
+    debugPrint('Firebase initialization error: $e');
+    debugPrint(
       'Running app without Firebase - Please configure Firebase to enable cloud features',
     );
   }

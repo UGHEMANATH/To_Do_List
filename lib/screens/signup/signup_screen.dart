@@ -24,6 +24,7 @@ class _SignupScreenState extends State<SignupScreen>
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
   bool _isPhoneVerified = false;
+  bool _isSendingOtp = false;
   String? _verificationId;
   late AnimationController _animationController;
 
@@ -62,14 +63,13 @@ class _SignupScreenState extends State<SignupScreen>
 
   String _formatPhoneForFirebase(String phone) {
     final digits = _normalizePhone(phone);
-    // Add country code if not present (assuming India +91)
     return '+91$digits';
   }
 
   Future<void> _sendOtp() async {
     final phone = _phoneController.text.trim();
     final digits = _normalizePhone(phone);
-    
+
     if (digits.length != 10) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -80,17 +80,19 @@ class _SignupScreenState extends State<SignupScreen>
       return;
     }
 
-    setState(() => _isLoading = true);
+    setState(() => _isSendingOtp = true);
 
     final authProvider = context.read<AuthProvider>();
     final formattedPhone = _formatPhoneForFirebase(phone);
     final result = await authProvider.sendPhoneOtp(formattedPhone);
 
-    setState(() => _isLoading = false);
+    setState(() => _isSendingOtp = false);
 
     if (result['success'] == true) {
       _verificationId = result['verificationId'];
-      _showOtpDialog(formattedPhone);
+      if (mounted) {
+        _showOtpDialog(formattedPhone);
+      }
     } else {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -107,16 +109,10 @@ class _SignupScreenState extends State<SignupScreen>
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => OtpInputDialog(
+      builder: (dialogContext) => OtpInputDialog(
         phoneNumber: phoneNumber,
         onVerify: (otp) async {
           if (_verificationId == null) return false;
-          // For signup, we just verify the OTP is valid, don't sign in
-          final authProvider = context.read<AuthProvider>();
-          // Store the verification for later use during signup
-          setState(() {
-            _isPhoneVerified = true;
-          });
           return true;
         },
         onResend: () => _sendOtp(),
@@ -171,13 +167,11 @@ class _SignupScreenState extends State<SignupScreen>
       }
     } else {
       if (mounted) {
+        final errorMsg =
+            authProvider.errorMessage ??
+            'Registration failed. Email may already be registered.';
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Registration failed. Email may already be registered.',
-            ),
-            backgroundColor: AppColors.danger,
-          ),
+          SnackBar(content: Text(errorMsg), backgroundColor: AppColors.danger),
         );
       }
     }
@@ -197,7 +191,6 @@ class _SignupScreenState extends State<SignupScreen>
         child: SafeArea(
           child: Stack(
             children: [
-              // Wavy decoration at bottom
               Positioned(
                 bottom: 0,
                 left: 0,
@@ -207,7 +200,6 @@ class _SignupScreenState extends State<SignupScreen>
                   size: const Size(double.infinity, 200),
                 ),
               ),
-              // Main content
               SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
                 padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -215,7 +207,6 @@ class _SignupScreenState extends State<SignupScreen>
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     const SizedBox(height: 30),
-                    // Header with back button
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -235,9 +226,9 @@ class _SignupScreenState extends State<SignupScreen>
                         ),
                         Container(
                           padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
+                          decoration: const BoxDecoration(
                             shape: BoxShape.circle,
-                            gradient: const LinearGradient(
+                            gradient: LinearGradient(
                               colors: [Color(0xFFFF6B9D), Color(0xFFC44569)],
                             ),
                           ),
@@ -251,7 +242,6 @@ class _SignupScreenState extends State<SignupScreen>
                       ],
                     ),
                     const SizedBox(height: 30),
-                    // Title with animation
                     FadeTransition(
                       opacity: Tween<double>(begin: 0, end: 1).animate(
                         CurvedAnimation(
@@ -279,7 +269,6 @@ class _SignupScreenState extends State<SignupScreen>
                       ),
                     ),
                     const SizedBox(height: 40),
-                    // Form
                     Form(
                       key: _formKey,
                       child: Column(
@@ -299,32 +288,17 @@ class _SignupScreenState extends State<SignupScreen>
                               if (value.trim().length < 3) {
                                 return 'Name must be at least 3 characters';
                               }
-                              if (!RegExp(r"^[A-Za-z ]+").hasMatch(value)) {
+                              if (!RegExp(
+                                r'^[A-Za-z ]+$',
+                              ).hasMatch(value.trim())) {
                                 return 'Name must contain only letters';
                               }
                               return null;
                             },
                           ),
                           const SizedBox(height: 16),
-                          // Phone Field
-                          _buildTextField(
-                            context,
-                            controller: _phoneController,
-                            label: 'Phone Number',
-                            hint: 'Enter your phone number',
-                            icon: Icons.phone,
-                            keyboardType: TextInputType.phone,
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                return 'Phone number is required';
-                              }
-                              final digits = _normalizePhone(value);
-                              if (digits.length != 10) {
-                                return 'Phone number must be 10 digits';
-                              }
-                              return null;
-                            },
-                          ),
+                          // Phone Field with Verify Button
+                          _buildPhoneFieldWithVerify(context),
                           const SizedBox(height: 16),
                           // Email Field
                           _buildTextField(
@@ -339,7 +313,7 @@ class _SignupScreenState extends State<SignupScreen>
                                 return 'Email is required';
                               }
                               if (!RegExp(
-                                r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4} ? ?'
+                                r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
                               ).hasMatch(value.trim())) {
                                 return 'Please enter a valid email';
                               }
@@ -365,10 +339,23 @@ class _SignupScreenState extends State<SignupScreen>
                                 return 'Password is required';
                               }
                               if (!_isValidPassword(value)) {
-                                return 'Password must include upper, lower, number, and special char';
+                                return 'Min 8 chars with upper, lower, number & special';
                               }
                               return null;
                             },
+                          ),
+                          const SizedBox(height: 8),
+                          // Password Requirements
+                          Padding(
+                            padding: const EdgeInsets.only(left: 4),
+                            child: Text(
+                              '• Min 8 characters • Uppercase • Lowercase • Number • Special char',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: Colors.white54,
+                                    fontSize: 11,
+                                  ),
+                            ),
                           ),
                           const SizedBox(height: 16),
                           // Confirm Password Field
@@ -388,6 +375,9 @@ class _SignupScreenState extends State<SignupScreen>
                             validator: (value) {
                               if (value == null || value.isEmpty) {
                                 return 'Please confirm your password';
+                              }
+                              if (value != _passwordController.text) {
+                                return 'Passwords do not match';
                               }
                               return null;
                             },
@@ -461,9 +451,7 @@ class _SignupScreenState extends State<SignupScreen>
                                     ?.copyWith(color: Colors.white70),
                               ),
                               GestureDetector(
-                                onTap: () {
-                                  Navigator.pop(context);
-                                },
+                                onTap: () => Navigator.pop(context),
                                 child: Text(
                                   'Sign in',
                                   style: Theme.of(context).textTheme.bodyMedium
@@ -486,6 +474,147 @@ class _SignupScreenState extends State<SignupScreen>
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildPhoneFieldWithVerify(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              'Phone Number',
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: Colors.white70,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            if (_isPhoneVerified) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.success.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.check_circle,
+                      color: AppColors.success,
+                      size: 14,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Verified',
+                      style: TextStyle(
+                        color: AppColors.success,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: TextFormField(
+                controller: _phoneController,
+                keyboardType: TextInputType.phone,
+                enabled: !_isPhoneVerified,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Enter 10-digit phone number',
+                  hintStyle: const TextStyle(color: Colors.white30),
+                  prefixIcon: const Icon(Icons.phone, color: Colors.white54),
+                  filled: true,
+                  fillColor: Colors.white.withOpacity(0.1),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: Colors.white24),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: Colors.white24),
+                  ),
+                  disabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(
+                      color: AppColors.success.withOpacity(0.5),
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(
+                      color: Color(0xFFFF6B9D),
+                      width: 2,
+                    ),
+                  ),
+                  errorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(
+                      color: AppColors.danger,
+                      width: 2,
+                    ),
+                  ),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Phone number is required';
+                  }
+                  final digits = _normalizePhone(value);
+                  if (digits.length != 10) {
+                    return 'Phone number must be 10 digits';
+                  }
+                  return null;
+                },
+              ),
+            ),
+            const SizedBox(width: 12),
+            SizedBox(
+              height: 56,
+              child: ElevatedButton(
+                onPressed: _isPhoneVerified || _isSendingOtp ? null : _sendOtp,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _isPhoneVerified
+                      ? AppColors.success.withOpacity(0.3)
+                      : const Color(0xFFFF6B9D),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                ),
+                child: _isSendingOtp
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : Text(
+                        _isPhoneVerified ? 'Verified' : 'Verify',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -559,7 +688,6 @@ class _SignupScreenState extends State<SignupScreen>
   }
 }
 
-// Wave painter for bottom decoration
 class WavePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
@@ -587,7 +715,6 @@ class WavePainter extends CustomPainter {
 
     canvas.drawPath(path, paint);
 
-    // Second wave
     final paint2 = Paint()
       ..color = const Color(0xFFC44569).withOpacity(0.15)
       ..style = PaintingStyle.fill;

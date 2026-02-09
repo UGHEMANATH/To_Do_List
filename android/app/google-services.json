@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "471457421223",
+    "project_id": "smart-planner-2026",
+    "storage_bucket": "smart-planner-2026.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:471457421223:android:811b24f884b8e4a93d8882",
+        "android_client_info": {
+          "package_name": "com.example.smart_task_planner"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCK7n-UqN24a-aLVqGkTMpKKpikKoX0oNQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -119,10 +119,7 @@ class _OtpInputDialogState extends State<OtpInputDialog> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              const Color(0xFF1A3A52),
-              const Color(0xFF2D5F7F),
-            ],
+            colors: [const Color(0xFF1A3A52), const Color(0xFF2D5F7F)],
           ),
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
@@ -155,25 +152,25 @@ class _OtpInputDialogState extends State<OtpInputDialog> {
             Text(
               'Verify Phone Number',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
               'Enter the 6-digit code sent to',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.white70,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: Colors.white70),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 4),
             Text(
               widget.phoneNumber,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFFFF6B9D),
-                    fontWeight: FontWeight.bold,
-                  ),
+                color: const Color(0xFFFF6B9D),
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 24),
             // OTP Input Fields
@@ -194,9 +191,7 @@ class _OtpInputDialogState extends State<OtpInputDialog> {
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
                     ),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                    ],
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     decoration: InputDecoration(
                       counterText: '',
                       filled: true,
@@ -255,8 +250,9 @@ class _OtpInputDialogState extends State<OtpInputDialog> {
                           height: 24,
                           width: 24,
                           child: CircularProgressIndicator(
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(Colors.white),
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
                             strokeWidth: 2,
                           ),
                         )
@@ -278,22 +274,20 @@ class _OtpInputDialogState extends State<OtpInputDialog> {
               children: [
                 Text(
                   "Didn't receive code? ",
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.white70,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: Colors.white70),
                 ),
                 GestureDetector(
                   onTap: _canResend ? _handleResend : null,
                   child: Text(
-                    _canResend
-                        ? 'Resend OTP'
-                        : 'Resend in ${_resendSeconds}s',
+                    _canResend ? 'Resend OTP' : 'Resend in ${_resendSeconds}s',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: _canResend
-                              ? const Color(0xFFFF6B9D)
-                              : Colors.white38,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      color: _canResend
+                          ? const Color(0xFFFF6B9D)
+                          : Colors.white38,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ],
@@ -302,10 +296,7 @@ class _OtpInputDialogState extends State<OtpInputDialog> {
             // Cancel Button
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: Text(
-                'Cancel',
-                style: TextStyle(color: Colors.white54),
-              ),
+              child: Text('Cancel', style: TextStyle(color: Colors.white54)),
             ),
           ],
         ),
