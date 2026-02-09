@@ -77,8 +77,11 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // Login with Firebase
-  Future<bool> login({required String email, required String password}) async {
+  // Login with email or phone and password
+  Future<bool> login({
+    required String identifier, // Can be email or phone
+    required String password,
+  }) async {
     if (!_firebaseAvailable) {
       _errorMessage =
           'Firebase not configured. Please set up Firebase to enable cloud authentication.';
@@ -90,7 +93,7 @@ class AuthProvider extends ChangeNotifier {
       _errorMessage = null;
 
       final result = await _firebaseAuthService.signIn(
-        email: email,
+        identifier: identifier,
         password: password,
       );
 
@@ -107,105 +110,6 @@ class AuthProvider extends ChangeNotifier {
       }
     } catch (e) {
       _errorMessage = 'An error occurred during login';
-      notifyListeners();
-      return false;
-    }
-  }
-
-  // Login with Google
-  Future<bool> loginWithGoogle() async {
-    if (!_firebaseAvailable) {
-      _errorMessage =
-          'Firebase not configured. Please set up Firebase to enable cloud authentication.';
-      notifyListeners();
-      return false;
-    }
-
-    try {
-      _errorMessage = null;
-      final result = await _firebaseAuthService.signInWithGoogle();
-      if (result['success'] == true) {
-        final firebaseUser = result['user'] as firebase_auth.User;
-        _currentUser = await _firebaseAuthService.getUserData(firebaseUser.uid);
-        _isLoggedIn = true;
-        notifyListeners();
-        return true;
-      } else {
-        _errorMessage = result['message'];
-        notifyListeners();
-        return false;
-      }
-    } catch (e) {
-      _errorMessage = 'Google sign-in failed';
-      notifyListeners();
-      return false;
-    }
-  }
-
-  // Send OTP for phone login
-  Future<Map<String, dynamic>> sendPhoneOtp(String phoneNumber) async {
-    if (!_firebaseAvailable) {
-      return {
-        'success': false,
-        'message':
-            'Firebase not configured. Please set up Firebase to enable cloud authentication.',
-      };
-    }
-    return _firebaseAuthService.sendPhoneOtp(phoneNumber: phoneNumber);
-  }
-
-  // Verify OTP for phone login
-  Future<bool> verifyPhoneOtp({
-    required String verificationId,
-    required String smsCode,
-  }) async {
-    if (!_firebaseAvailable) {
-      _errorMessage =
-          'Firebase not configured. Please set up Firebase to enable cloud authentication.';
-      notifyListeners();
-      return false;
-    }
-
-    final result = await _firebaseAuthService.verifyPhoneOtp(
-      verificationId: verificationId,
-      smsCode: smsCode,
-    );
-
-    if (result['success'] == true) {
-      final firebaseUser = result['user'] as firebase_auth.User;
-      _currentUser = await _firebaseAuthService.getUserData(firebaseUser.uid);
-      _isLoggedIn = true;
-      notifyListeners();
-      return true;
-    } else {
-      _errorMessage = result['message'];
-      notifyListeners();
-      return false;
-    }
-  }
-
-  // Link phone number to current user (for signup verification)
-  Future<bool> linkPhoneNumber({
-    required String verificationId,
-    required String smsCode,
-  }) async {
-    if (!_firebaseAvailable) {
-      _errorMessage =
-          'Firebase not configured. Please set up Firebase to enable cloud authentication.';
-      notifyListeners();
-      return false;
-    }
-
-    final result = await _firebaseAuthService.linkPhoneNumber(
-      verificationId: verificationId,
-      smsCode: smsCode,
-    );
-
-    if (result['success'] == true) {
-      notifyListeners();
-      return true;
-    } else {
-      _errorMessage = result['message'];
       notifyListeners();
       return false;
     }

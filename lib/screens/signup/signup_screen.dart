@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../utils/colors.dart';
 import '../../app/routes.dart';
-import '../../widgets/otp_input_dialog.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -23,9 +22,6 @@ class _SignupScreenState extends State<SignupScreen>
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
-  bool _isPhoneVerified = false;
-  bool _isSendingOtp = false;
-  String? _verificationId;
   late AnimationController _animationController;
 
   @override
@@ -61,75 +57,6 @@ class _SignupScreenState extends State<SignupScreen>
     return value.replaceAll(RegExp(r'\D'), '');
   }
 
-  String _formatPhoneForFirebase(String phone) {
-    final digits = _normalizePhone(phone);
-    return '+91$digits';
-  }
-
-  Future<void> _sendOtp() async {
-    final phone = _phoneController.text.trim();
-    final digits = _normalizePhone(phone);
-
-    if (digits.length != 10) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter a valid 10-digit phone number'),
-          backgroundColor: AppColors.danger,
-        ),
-      );
-      return;
-    }
-
-    setState(() => _isSendingOtp = true);
-
-    final authProvider = context.read<AuthProvider>();
-    final formattedPhone = _formatPhoneForFirebase(phone);
-    final result = await authProvider.sendPhoneOtp(formattedPhone);
-
-    setState(() => _isSendingOtp = false);
-
-    if (result['success'] == true) {
-      _verificationId = result['verificationId'];
-      if (mounted) {
-        _showOtpDialog(formattedPhone);
-      }
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message'] ?? 'Failed to send OTP'),
-            backgroundColor: AppColors.danger,
-          ),
-        );
-      }
-    }
-  }
-
-  void _showOtpDialog(String phoneNumber) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => OtpInputDialog(
-        phoneNumber: phoneNumber,
-        onVerify: (otp) async {
-          if (_verificationId == null) return false;
-          return true;
-        },
-        onResend: () => _sendOtp(),
-      ),
-    ).then((verified) {
-      if (verified == true) {
-        setState(() => _isPhoneVerified = true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Phone number verified successfully!'),
-            backgroundColor: AppColors.success,
-          ),
-        );
-      }
-    });
-  }
-
   Future<void> _handleSignup() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -146,10 +73,11 @@ class _SignupScreenState extends State<SignupScreen>
     setState(() => _isLoading = true);
 
     final authProvider = context.read<AuthProvider>();
+    final phone = _normalizePhone(_phoneController.text);
     final success = await authProvider.signUp(
       name: _nameController.text.trim(),
       email: _emailController.text.trim(),
-      phone: _phoneController.text.trim(),
+      phone: phone,
       password: _passwordController.text,
     );
 
@@ -297,8 +225,25 @@ class _SignupScreenState extends State<SignupScreen>
                             },
                           ),
                           const SizedBox(height: 16),
-                          // Phone Field with Verify Button
-                          _buildPhoneFieldWithVerify(context),
+                          // Phone Field
+                          _buildTextField(
+                            context,
+                            controller: _phoneController,
+                            label: 'Phone Number',
+                            hint: 'Enter 10-digit phone number',
+                            icon: Icons.phone,
+                            keyboardType: TextInputType.phone,
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return 'Phone number is required';
+                              }
+                              final digits = _normalizePhone(value);
+                              if (digits.length != 10) {
+                                return 'Phone number must be 10 digits';
+                              }
+                              return null;
+                            },
+                          ),
                           const SizedBox(height: 16),
                           // Email Field
                           _buildTextField(
@@ -474,147 +419,6 @@ class _SignupScreenState extends State<SignupScreen>
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildPhoneFieldWithVerify(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(
-              'Phone Number',
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: Colors.white70,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            if (_isPhoneVerified) ...[
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AppColors.success.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.check_circle,
-                      color: AppColors.success,
-                      size: 14,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Verified',
-                      style: TextStyle(
-                        color: AppColors.success,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: TextFormField(
-                controller: _phoneController,
-                keyboardType: TextInputType.phone,
-                enabled: !_isPhoneVerified,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'Enter 10-digit phone number',
-                  hintStyle: const TextStyle(color: Colors.white30),
-                  prefixIcon: const Icon(Icons.phone, color: Colors.white54),
-                  filled: true,
-                  fillColor: Colors.white.withOpacity(0.1),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: Colors.white24),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: Colors.white24),
-                  ),
-                  disabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide(
-                      color: AppColors.success.withOpacity(0.5),
-                    ),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(
-                      color: Color(0xFFFF6B9D),
-                      width: 2,
-                    ),
-                  ),
-                  errorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(
-                      color: AppColors.danger,
-                      width: 2,
-                    ),
-                  ),
-                ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Phone number is required';
-                  }
-                  final digits = _normalizePhone(value);
-                  if (digits.length != 10) {
-                    return 'Phone number must be 10 digits';
-                  }
-                  return null;
-                },
-              ),
-            ),
-            const SizedBox(width: 12),
-            SizedBox(
-              height: 56,
-              child: ElevatedButton(
-                onPressed: _isPhoneVerified || _isSendingOtp ? null : _sendOtp,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _isPhoneVerified
-                      ? AppColors.success.withOpacity(0.3)
-                      : const Color(0xFFFF6B9D),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                ),
-                child: _isSendingOtp
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Colors.white,
-                          ),
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : Text(
-                        _isPhoneVerified ? 'Verified' : 'Verify',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-              ),
-            ),
-          ],
-        ),
-      ],
     );
   }
 

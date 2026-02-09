@@ -1,9 +1,8 @@
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:google_sign_in/google_sign_in.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_model.dart' as app_models;
 
 class FirebaseAuthService {
@@ -79,8 +78,16 @@ class FirebaseAuthService {
         'message': 'Account created successfully',
       };
     } on FirebaseAuthException catch (e) {
+      print('SignUp FirebaseAuthException: ${e.code} - ${e.message}');
       return {'success': false, 'message': _getErrorMessage(e.code)};
+    } on FirebaseException catch (e) {
+      print('SignUp FirebaseException: ${e.code} - ${e.message}');
+      return {
+        'success': false,
+        'message': 'Database error: ${e.message}. Please check Firestore security rules.',
+      };
     } catch (e) {
+      print('SignUp error: $e');
       return {
         'success': false,
         'message': 'An error occurred. Please try again.',
@@ -88,9 +95,9 @@ class FirebaseAuthService {
     }
   }
 
-  // Sign in with email and password
+  // Sign in with email or phone and password
   Future<Map<String, dynamic>> signIn({
-    required String email,
+    required String identifier, // Can be email or phone
     required String password,
   }) async {
     if (!_isInitialized || _auth == null || _firestore == null) {
@@ -98,28 +105,93 @@ class FirebaseAuthService {
     }
 
     try {
-      UserCredential userCredential = await _auth!.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      // Check if identifier is email or phone
+      final isEmail = identifier.contains('@');
+      
+      if (isEmail) {
+        // Email login
+        UserCredential userCredential = await _auth!.signInWithEmailAndPassword(
+          email: identifier,
+          password: password,
+        );
 
-      // Update last login time
-      await _firestore!
-          .collection('users')
-          .doc(userCredential.user!.uid)
-          .update({'lastLoginAt': FieldValue.serverTimestamp()});
+        // Update last login time
+        await _firestore!
+            .collection('users')
+            .doc(userCredential.user!.uid)
+            .update({'lastLoginAt': FieldValue.serverTimestamp()});
 
-      // Log the login event
-      await _logLoginHistory(userCredential.user!.uid, 'login', email);
+        // Log the login event
+        await _logLoginHistory(userCredential.user!.uid, 'login', identifier);
 
-      return {
-        'success': true,
-        'user': userCredential.user,
-        'message': 'Login successful',
-      };
+        return {
+          'success': true,
+          'user': userCredential.user,
+          'message': 'Login successful',
+        };
+      } else {
+        // Phone login - search in Firestore for user with this phone
+        final phone = identifier.replaceAll(RegExp(r'\D'), '');
+        
+        final snapshot = await _firestore!
+            .collection('users')
+            .where('phone', isEqualTo: phone)
+            .limit(1)
+            .get();
+
+        if (snapshot.docs.isEmpty) {
+          return {
+            'success': false,
+            'message': 'No account found with this phone number',
+          };
+        }
+
+        final userData = snapshot.docs.first.data();
+        final email = userData['email'] as String?;
+
+        if (email == null || email.isEmpty) {
+          return {
+            'success': false,
+            'message': 'Account setup incomplete. Please use email to login.',
+          };
+        }
+
+        // Sign in with email
+        UserCredential userCredential = await _auth!.signInWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+
+        // Update last login time
+        await _firestore!
+            .collection('users')
+            .doc(userCredential.user!.uid)
+            .update({'lastLoginAt': FieldValue.serverTimestamp()});
+
+        // Log the login event
+        await _logLoginHistory(
+          userCredential.user!.uid,
+          'phone_login',
+          identifier,
+        );
+
+        return {
+          'success': true,
+          'user': userCredential.user,
+          'message': 'Login successful',
+        };
+      }
     } on FirebaseAuthException catch (e) {
+      print('FirebaseAuthException: ${e.code} - ${e.message}');
       return {'success': false, 'message': _getErrorMessage(e.code)};
+    } on FirebaseException catch (e) {
+      print('FirebaseException: ${e.code} - ${e.message}');
+      return {
+        'success': false,
+        'message': 'Database error: ${e.message}. Please check Firestore security rules.',
+      };
     } catch (e) {
+      print('Sign in error: $e');
       return {
         'success': false,
         'message': 'An error occurred. Please try again.',
@@ -127,191 +199,7 @@ class FirebaseAuthService {
     }
   }
 
-  // Sign in with Google
-  Future<Map<String, dynamic>> signInWithGoogle() async {
-    if (!_isInitialized || _auth == null || _firestore == null) {
-      return {'success': false, 'message': 'Firebase not configured'};
-    }
 
-    try {
-      final googleSignIn = GoogleSignIn();
-      final googleUser = await googleSignIn.signIn();
-      if (googleUser == null) {
-        return {'success': false, 'message': 'Google sign-in cancelled'};
-      }
-
-      final googleAuth = await googleUser.authentication;
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      final userCredential = await _auth!.signInWithCredential(credential);
-      final user = userCredential.user;
-      if (user == null) {
-        return {'success': false, 'message': 'Google sign-in failed'};
-      }
-
-      final userDoc = await _firestore!.collection('users').doc(user.uid).get();
-      if (!userDoc.exists) {
-        await _firestore!.collection('users').doc(user.uid).set({
-          'uid': user.uid,
-          'name': user.displayName ?? 'User',
-          'email': user.email ?? '',
-          'phone': user.phoneNumber ?? '',
-          'createdAt': FieldValue.serverTimestamp(),
-          'lastLoginAt': FieldValue.serverTimestamp(),
-        });
-      } else {
-        await _firestore!.collection('users').doc(user.uid).update({
-          'lastLoginAt': FieldValue.serverTimestamp(),
-        });
-      }
-
-      await _logLoginHistory(user.uid, 'google_login', user.email ?? '');
-
-      return {
-        'success': true,
-        'user': user,
-        'message': 'Google sign-in successful',
-      };
-    } catch (e) {
-      return {
-        'success': false,
-        'message': 'Google sign-in failed. Please try again.',
-      };
-    }
-  }
-
-  // Send OTP to phone number
-  Future<Map<String, dynamic>> sendPhoneOtp({
-    required String phoneNumber,
-  }) async {
-    if (!_isInitialized || _auth == null) {
-      return {'success': false, 'message': 'Firebase not configured'};
-    }
-
-    final completer = Completer<Map<String, dynamic>>();
-
-    await _auth!.verifyPhoneNumber(
-      phoneNumber: phoneNumber,
-      verificationCompleted: (credential) async {
-        if (!completer.isCompleted) {
-          completer.complete({
-            'success': true,
-            'verificationId': '',
-            'credential': credential,
-          });
-        }
-      },
-      verificationFailed: (e) {
-        if (!completer.isCompleted) {
-          completer.complete({
-            'success': false,
-            'message': _getErrorMessage(e.code),
-          });
-        }
-      },
-      codeSent: (verificationId, resendToken) {
-        if (!completer.isCompleted) {
-          completer.complete({
-            'success': true,
-            'verificationId': verificationId,
-            'resendToken': resendToken,
-          });
-        }
-      },
-      codeAutoRetrievalTimeout: (verificationId) {
-        if (!completer.isCompleted) {
-          completer.complete({
-            'success': true,
-            'verificationId': verificationId,
-          });
-        }
-      },
-      timeout: const Duration(seconds: 60),
-    );
-
-    return completer.future;
-  }
-
-  // Verify OTP and sign in with phone
-  Future<Map<String, dynamic>> verifyPhoneOtp({
-    required String verificationId,
-    required String smsCode,
-  }) async {
-    if (!_isInitialized || _auth == null || _firestore == null) {
-      return {'success': false, 'message': 'Firebase not configured'};
-    }
-
-    try {
-      final credential = PhoneAuthProvider.credential(
-        verificationId: verificationId,
-        smsCode: smsCode,
-      );
-
-      final userCredential = await _auth!.signInWithCredential(credential);
-      final user = userCredential.user;
-      if (user == null) {
-        return {'success': false, 'message': 'OTP verification failed'};
-      }
-
-      final userDoc = await _firestore!.collection('users').doc(user.uid).get();
-      if (!userDoc.exists) {
-        await _firestore!.collection('users').doc(user.uid).set({
-          'uid': user.uid,
-          'name': user.displayName ?? 'User',
-          'email': user.email ?? '',
-          'phone': user.phoneNumber ?? '',
-          'createdAt': FieldValue.serverTimestamp(),
-          'lastLoginAt': FieldValue.serverTimestamp(),
-        });
-      } else {
-        await _firestore!.collection('users').doc(user.uid).update({
-          'lastLoginAt': FieldValue.serverTimestamp(),
-        });
-      }
-
-      await _logLoginHistory(user.uid, 'phone_login', user.email ?? '');
-
-      return {
-        'success': true,
-        'user': user,
-        'message': 'Phone login successful',
-      };
-    } catch (e) {
-      return {
-        'success': false,
-        'message': 'Invalid OTP. Please try again.',
-      };
-    }
-  }
-
-  // Link phone number to current user
-  Future<Map<String, dynamic>> linkPhoneNumber({
-    required String verificationId,
-    required String smsCode,
-  }) async {
-    if (!_isInitialized || _auth == null) {
-      return {'success': false, 'message': 'Firebase not configured'};
-    }
-
-    final user = _auth!.currentUser;
-    if (user == null) {
-      return {'success': false, 'message': 'No active user'};
-    }
-
-    try {
-      final credential = PhoneAuthProvider.credential(
-        verificationId: verificationId,
-        smsCode: smsCode,
-      );
-      await user.linkWithCredential(credential);
-      return {'success': true, 'message': 'Phone verified'};
-    } catch (e) {
-      return {'success': false, 'message': 'Phone verification failed'};
-    }
-  }
 
   // Sign out
   Future<void> signOut() async {
